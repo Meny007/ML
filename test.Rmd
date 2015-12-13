@@ -1,0 +1,96 @@
+---
+title: "Practical Machine Learning"
+output: html_document
+---
+
+Synopsis
+========
+
+This is a project is part of the Coursera Data Science specialization from the Johns Hopkins University.
+In this specific work the goal is to predict the manner of performing unilateral dumbbell biceps curls based on data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.
+
+Data Processing
+===============
+This section consists of installing the necessary packages and loading the data.
+
+```{r}
+library(caret)
+training <- read.csv("pml-training.csv", header=TRUE, as.is = TRUE, stringsAsFactors = FALSE, sep=',', na.strings=c('NA','','#DIV/0!'))
+validation <- read.csv("pml-testing.csv", header=TRUE, as.is = TRUE, stringsAsFactors = FALSE, sep=',', na.strings=c('NA','','#DIV/0!')) #Will be used as validation set
+set.seed(100)
+inTrain <- createDataPartition(y=training$classe, p=0.7, list=F)
+forTrain <- training[inTrain, ]
+forTest <- training[-inTrain, ]
+dim(forTrain)
+dim(forTest)
+```
+
+Data Process
+------------
+On this step the aim is to reduce the dimension by not including non relevant predictors based on their "Near Zero Variance" as well as removing columns with NA's.
+
+```{r}
+forTrain <- forTrain[, colSums(is.na(forTrain)) == 0] #getting rid of NA
+trainNZV <- nearZeroVar(forTrain) # Removing non-significant variables
+if(length(trainNZV) > 0) forTrain <- forTrain[, -trainNZV]
+forTrain<-forTrain[,-(1:5)]
+```
+
+Model Options
+=============
+
+After data clean-up, the approach will be based on 2 models: Linear Discriminant Analysis (LDA) and Random Forest for categorical data.
+
+First approach: LDA
+
+```{r}
+library(MASS)
+ldaModel<-lda(classe~.,data=forTrain)
+ldaPred <-predict(ldaModel,forTrain)
+prop<-ldaModel$svd^2/sum(ldaModel$svd^2)
+prop
+ldaPredTest<-predict(ldaModel,newdata=forTest[colnames(forTrain)])
+confusionMatrix(ldaPredTest$class,forTest$classe)
+qplot(ldaPredTest$x[,1],ldaPredTest$x[,2],data=forTest,color=classe,main="Classe separation")
+```
+
+As observed, usian LDA technique we cannot have a clear separation of the groups. Now will try the next approach.
+
+2nd Approach: Random Forest
+
+```{r}
+rf.fit<-train(classe~.,data=forTrain, method="rf",trControl=trainControl(method="cv",number=5))
+rf.pred<-predict(rf.fit,newdata=forTest[colnames(forTrain)])
+confusionMatrix(forTest$classe,rf.pred)
+```
+
+Summary
+=======
+
+No doubt that the Random Forest approach gave a much better results havin an accuracy between 0.9962 to 0.9988 on a 95% confidence level and this is what we will use.
+It is worthy saying that there are any other model and techniques that could be used as awell.
+
+Project Submission
+==================
+
+As part of the final grade, there is a requirement to submit the chosen model and apply it in the validation set.
+
+Preparing the "Validation" dataset
+
+```{r}
+validation <-validation[colnames(forTrain)[1:53]]
+randomVal <- predict(rf.fit,newdata=validation)
+```
+
+Now, this procedure to make it automated the file generation required to be uploaded.
+
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  path <- getwd()
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=file.path(path, filename),quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(randomVal)
